@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Token Info</title>
+    <!-- <link rel="canonical" href="https://nc.cryomint.com" /> -->
+    <script src="https://cdn.bootcss.com/echarts/5.2.2/echarts.min.js"></script>
+  </head>
+
+  <body>
+    <div>
+      <select name="token" id="token-select">
+        {% for token in tokens %}
+        <option value="{{token[1]}}" id="">{{token[0]}}</option>
+        {% endfor %}
+      </select>
+
+      <div>
+        <input type="radio" id="time-3m" name="time" value="3m" />
+        <label for="time-3m">3m</label>
+        <input type="radio" id="time-15m" name="time" value="15m" />
+        <label for="time-15m">15m</label>
+        <!--  -->
+        <input type="radio" id="time-1h" name="time" value="1h" checked />
+        <label for="time-1h">1h</label>
+        <!--  -->
+        <input type="radio" id="time-4h" name="time" value="4h" />
+        <label for="time-4h">4h</label>
+        <input type="radio" id="time-1d" name="time" value="1d" />
+        <label for="time-1d">1d</label>
+      </div>
+
+      <div>
+        <label for="x-axis">x-axis number</label>
+        <input
+          type="number"
+          id="x-axis"
+          name="x-axis"
+          min="4"
+          max="24"
+          value="8"
+          step="1"
+        />
+      </div>
+
+      <button id="rerender-button">query</button>
+    </div>
+    <div>价格</div>
+    <div
+      id="price-wrapper"
+      style="width: 1000px; height: 400px; margin-left: 100px"
+    ></div>
+    <div>流通量（亿）</div>
+    <div
+      id="supply-wrapper"
+      style="width: 1000px; height: 400px; margin-left: 100px"
+    ></div>
+
+    <script>
+      var tokenSelect = document.getElementById("token-select");
+      // tokenSelect.addEventListener("change", (event) => {
+      //   rerender();
+      // });
+      var selectedTime = document.querySelector("[name=time]:checked").value;
+      document.getElementsByName("time").forEach((input) => {
+        input.addEventListener("change", () => {
+          let checked = document.querySelector("[name=time]:checked");
+          selectedTime = checked.value;
+          // rerender();
+        });
+      });
+      var xAxis = document.getElementById("x-axis");
+      // xAxis.addEventListener("change", () => {
+      //   rerender();
+      // });
+      var priceWrapper = document.getElementById("price-wrapper");
+      var supplyWrapper = document.getElementById("supply-wrapper");
+      var rerenderBtn = document.getElementById("rerender-button");
+      rerenderBtn.addEventListener("click", () => {
+        rerender();
+      });
+    </script>
+
+    <script>
+      const rerender = () => {
+        let token = tokenSelect.value;
+        let timeSpan = selectedTime;
+        let x = xAxis.value;
+        let url = `info/data?token=${token}&time=${timeSpan}&x=${x}`;
+        fetch(url)
+          .then((resp) => {
+            return resp.json();
+          })
+          .then((json) => {
+            if (json.status === 0) {
+              window.alert(json.info);
+            } else if (json.status === 1) {
+              let symbol = json.result.symbol;
+              let unit = json.result.unit;
+              let timeS = json.result.time_span;
+              let multi = json.result.multi;
+              let data = json.result.data;
+              let timeAxis = chunk(data, multi).map((group) => {
+                let time = new Date(group[multi - 1].timestamp * 1000);
+                if (timeS === "3m")
+                  return `${time.getHours()}:${
+                    time.getMinutes() < 10
+                      ? `0${time.getMinutes()}`
+                      : time.getMinutes()
+                  }`;
+                if (timeS === "15m") {
+                }
+                return `${time.getHours()}:${
+                  time.getMinutes() < 10
+                    ? `0${time.getMinutes()}`
+                    : time.getMinutes()
+                }`;
+                if (timeS === "1h")
+                  return `${time.getMonth()}-${time.getDate()} ${time.getHours()}:${
+                    time.getMinutes() < 10
+                      ? `0${time.getMinutes()}`
+                      : time.getMinutes()
+                  }`;
+                if (timeS === "4h")
+                  return `${time.getMonth()}-${time.getDate()} ${time.getHours()}:${
+                    time.getMinutes() < 10
+                      ? `0${time.getMinutes()}`
+                      : time.getMinutes()
+                  }`;
+                if (timeS === "1d")
+                  return `${time.getMonth()}-${time.getDate()} ${time.getHours()}:${
+                    time.getMinutes() < 10
+                      ? `0${time.getMinutes()}`
+                      : time.getMinutes()
+                  }`;
+              });
+              timeAxis.reverse();
+
+              let priceData = chunk(data, multi).map((group) => {
+                let o = group[multi - 1].buy_price;
+                let c = group[0].buy_price;
+                let prices = Object.keys(group).map(
+                  (record) => group[record].buy_price
+                );
+                let l = Math.min(...prices);
+                let h = Math.max(...prices);
+                return [o, c, l, h];
+              });
+
+              let supplyData = chunk(data, multi).map((group) => {
+                let o = group[multi - 1].total_supply / 1e26;
+                let c = group[0].total_supply / 1e26;
+                let supplies = Object.keys(group).map(
+                  (record) => group[record].total_supply / 1e26
+                );
+                let l = Math.min(...supplies);
+                let h = Math.max(...supplies);
+                return [o, c, l, h];
+              });
+
+              priceData.reverse();
+              supplyData.reverse();
+
+              let priceChart = echarts.init(priceWrapper);
+              let priceOption = {
+                xAxis: { data: timeAxis },
+                yAxis: {
+                  scale: true,
+                },
+                series: [
+                  {
+                    type: "candlestick",
+                    data: priceData,
+                    // itemStyle: {
+                    //   color: "#314656",
+                    //   color0: "#c23531",
+                    //   borderColor: '#314656',
+                    //   borderColor0: "#c23531",
+                    // },
+                  },
+                ],
+              };
+              priceChart.setOption(priceOption);
+
+              let supplyChart = echarts.init(supplyWrapper);
+
+              let supplyOption = {
+                xAxis: { data: timeAxis },
+                yAxis: {
+                  scale: true,
+                },
+                series: [
+                  {
+                    type: "candlestick",
+                    data: supplyData,
+                    // itemStyle: {
+                    //   color: "#314656",
+                    //   color0: "#c23531",
+                    //   borderColor: '#314656',
+                    //   borderColor0: "#c23531",
+                    // },
+                  },
+                ],
+              };
+              supplyChart.setOption(supplyOption);
+            }
+          });
+      };
+      rerender();
+    </script>
+
+    <script>
+      const chunk = (arr, num) => {
+        num = num * 1 || 1;
+        let ret = [];
+        arr.forEach(function (item, i) {
+          if (i % num === 0) {
+            ret.push([]);
+          }
+          ret[ret.length - 1].push(item);
+        });
+        return ret;
+      };
+    </script>
+  </body>
+</html>
